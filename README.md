@@ -88,6 +88,7 @@ From then on the phone connects automatically whenever the scanner is running on
 | --- | --- |
 | iPhone page can't connect | Same Wi‑Fi? Did you click *Allow* for incoming connections? (System Settings → Network → Firewall → Options → allow `node`.) Guest/office Wi‑Fi often blocks devices from talking to each other: turn on the iPhone's **Personal Hotspot** and connect the Mac to it. |
 | “This Connection Is Not Private” | Finish the certificate steps in section 2 (both *Install* and *Certificate Trust Settings*). |
+| Phone says “Not paired” | Scan the QR code in the portal again (or open the scanner from it once). Cards captured meanwhile stay on the phone and upload by themselves once it is paired. |
 | Camera doesn't start | Settings → Apps → Safari → Camera → *Allow*, or in Safari tap **aA → Website Settings → Camera**. |
 | Mac changed network / IP address | Restart the scanner and scan the QR code again. The certificate is reissued automatically and stays trusted. |
 | Card outline flickers / not found | Use a dark background, avoid strong reflections, and move a little closer. You can always capture manually with the round button; the scan is still cropped if the edges are found. |

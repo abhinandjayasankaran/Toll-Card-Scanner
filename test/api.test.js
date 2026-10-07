@@ -297,3 +297,22 @@ test('deletes to the trash folder and archives a batch', async () => {
   assert.equal(after.data.result, 'saved');
   assert.equal(after.data.scan.seq, 1);
 });
+
+test('a phone paired only by cookie (iOS home-screen app) can upload and gets its code back', async () => {
+  const cookie = `tcs_token=${TOKEN}`;
+  const pair = await fetch(`${base}/api/pair`, { headers: { Cookie: cookie } });
+  assert.equal(pair.status, 200);
+  assert.equal((await pair.json()).token, TOKEN);
+  assert.equal((await fetch(`${base}/api/pair`)).status, 401);
+  const body = await card(900);
+  // what the scanner sends: cookie + app header, no token
+  const ok = await fetch(`${base}/api/scans`, {
+    method: 'POST',
+    body,
+    headers: { Cookie: cookie, 'Content-Type': 'image/jpeg', 'X-Requested-With': 'toll-card-scanner', 'X-Capture-Id': 'cookie-only' },
+  });
+  assert.equal(ok.status, 200);
+  // a forged cross-site post carries the cookie but cannot add the header
+  const forged = await fetch(`${base}/api/scans`, { method: 'POST', body, headers: { Cookie: cookie, 'Content-Type': 'image/jpeg' } });
+  assert.equal(forged.status, 403);
+});

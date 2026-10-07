@@ -190,7 +190,13 @@ function createApp({ store, ocr, token, caDer, info = () => ({}), trustLoopback 
   app.use('/portal', express.static(path.join(PUBLIC_DIR, 'portal')));
 
   // ------------------------------------------------------- authorised API
-  app.get('/api/pair', requireAuth, (req, res) => res.json({ ok: true }));
+  // A phone that is paired only by its cookie (the iOS home-screen app gets
+  // Safari's cookies but not its storage) gets the code back so it can keep it.
+  // Same-origin only: no CORS headers, so other sites cannot read it.
+  app.get('/api/pair', requireAuth, (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, token });
+  });
 
   app.get('/api/info', requireAuth, async (req, res, next) => {
     try {
