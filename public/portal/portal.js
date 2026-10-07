@@ -121,8 +121,13 @@
   }
 
   /** Applies a new list order right away, saves it, and offers Undo. */
-  async function saveOrder(next, message, undoable) {
+  async function saveOrder(wanted, message, undoable) {
     const before = order.slice();
+    // an Undo snapshot may name cards deleted since; keep only live ones and
+    // append any that arrived meanwhile (same rule as the server)
+    const kept = wanted.filter((id) => scans.has(id));
+    const listed = new Set(kept);
+    const next = kept.concat(order.filter((id) => !listed.has(id)));
     if (next.every((id, i) => id === before[i])) {
       toast('The list is already in that order');
       return;
@@ -163,7 +168,7 @@
   }
 
   function visibleIds() {
-    const ids = order.filter((id) => matches(scans.get(id)));
+    const ids = order.filter((id) => scans.has(id) && matches(scans.get(id)));
     if (sort === 'new') ids.sort((a, b) => newestFirst(scans.get(a), scans.get(b)));
     return ids;
   }
@@ -280,6 +285,7 @@
   function removeIds(ids) {
     const gone = ids.filter((id) => scans.has(id));
     if (!gone.length) return;
+    dropUndo(); // an older "Undo" next to a delete would look like it undoes the delete
     const goneSet = new Set(gone);
     let nextView = null;
     if (viewingId && goneSet.has(viewingId)) {
@@ -360,6 +366,7 @@
     const n = selected.size;
     document.body.classList.toggle('selecting', n > 0);
     $('selbar').hidden = n === 0;
+    if (n) fitSelbar();
     $('sel-count').textContent = n;
     const vis = visibleIds();
     const shownSel = vis.filter((id) => selected.has(id)).length;
@@ -369,6 +376,12 @@
     all.indeterminate = shownSel > 0 && shownSel < vis.length;
     all.disabled = vis.length === 0;
   }
+
+  /** Lets the page leave room for the selection bar, however many rows it wraps to. */
+  function fitSelbar() {
+    document.body.style.setProperty('--selbar-h', $('selbar').offsetHeight + 'px');
+  }
+  window.addEventListener('resize', () => selected.size && fitSelbar());
 
   $('select-all').addEventListener('change', (e) => selectVisible(e.target.checked));
   $('sel-clear').addEventListener('click', clearSelection);
@@ -597,6 +610,7 @@
     });
     es.addEventListener('reset', (e) => {
       setStats(JSON.parse(e.data).stats);
+      dropUndo();
       clearSelection();
       loadAll();
     });
@@ -717,7 +731,10 @@
   });
 
   // ------------------------------------------------------------- keyboard
-  const typing = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+  // Only real text entry swallows the shortcuts - not the "Select all"
+  // checkbox or the view menu, which keep focus after being clicked in Chrome.
+  const typing = (el) =>
+    el && (el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|reset|range|color|file)$/i.test(el.type)));
 
   document.addEventListener('keydown', (e) => {
     if (viewer.open) {
@@ -759,6 +776,7 @@
     document.querySelectorAll('.menu').forEach((m) => {
       if (!m.hidden) closed = true;
       m.hidden = true;
+      m.style.left = m.style.right = '';
     });
     return closed;
   }
@@ -770,6 +788,16 @@
       const open = menu.hidden;
       closeMenus();
       menu.hidden = !open;
+      if (!open) return;
+      // keep the menu on screen when the toolbar has wrapped in a narrow window
+      const r = menu.getBoundingClientRect();
+      if (r.left < 8) {
+        menu.style.left = '0';
+        menu.style.right = 'auto';
+      } else if (r.right > window.innerWidth - 8) {
+        menu.style.right = '0';
+        menu.style.left = 'auto';
+      }
     });
   }
   menuToggle('btn-more', 'menu');

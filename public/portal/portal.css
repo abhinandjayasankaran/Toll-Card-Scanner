@@ -359,7 +359,8 @@ main {
   border-radius: 10px;
   background: var(--surface);
   color: var(--muted);
-  flex: 1;
+  flex: 1 1 220px;
+  min-width: 200px;
   max-width: 360px;
 }
 
@@ -438,10 +439,10 @@ select {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  overflow: hidden;
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .tile.review {
@@ -474,6 +475,9 @@ select {
   aspect-ratio: 85.6 / 53.98;
   cursor: zoom-in;
   width: 100%;
+  /* the tile itself must not clip, so the drag & drop marker beside it shows */
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
 }
 
 .thumb img {
@@ -485,6 +489,7 @@ select {
 
 .tile-body {
   padding: 10px 12px 12px;
+  overflow: hidden;
 }
 
 .num {
@@ -649,10 +654,13 @@ body.selecting .thumb {
 }
 
 .selbar {
+  /* centred without a transform so it can use the full width before wrapping */
   position: fixed;
-  left: 50%;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: max-content;
   bottom: 22px;
-  transform: translateX(-50%);
   z-index: 30;
   display: flex;
   align-items: center;
@@ -707,11 +715,11 @@ body.selecting .thumb {
 }
 
 body.selecting main {
-  padding-bottom: 110px;
+  padding-bottom: calc(var(--selbar-h, 52px) + 60px);
 }
 
 body.selecting .toasts {
-  bottom: 90px;
+  bottom: calc(var(--selbar-h, 52px) + 36px);
 }
 
 .toast {

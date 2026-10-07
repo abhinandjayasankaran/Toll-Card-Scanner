@@ -157,7 +157,7 @@ class Store extends EventEmitter {
       const number = String(rawNumber || '').replace(/\D/g, '');
       if (!NUMBER_RE.test(number)) throw new StoreError(400, 'A card number has exactly 16 digits');
       const clash = this.findByNumber(number, id);
-      if (clash) throw new StoreError(409, `Card ${number} is already in the list (scan #${clash.seq})`, { clashId: clash.id });
+      if (clash) throw new StoreError(409, `Card ${number} is already in the list (No. ${this.positionOf(clash.id)})`, { clashId: clash.id });
       const file = this.fileNameFor(number, scan.seq);
       if (file !== scan.file) {
         await fsp.rename(this.imagePath(scan), path.join(this.imagesDir, file));
@@ -201,7 +201,7 @@ class Store extends EventEmitter {
       let note = null;
       if (ocr.number && ocr.number !== scan.number) {
         const clash = this.findByNumber(ocr.number, id);
-        if (clash) note = `Read ${ocr.number}, but that card is already scan #${clash.seq}`;
+        if (clash) note = `Read ${ocr.number}, but that card is already in the list (No. ${this.positionOf(clash.id)})`;
         else {
           const file = this.fileNameFor(ocr.number, scan.seq);
           await fsp.rename(this.imagePath(scan), path.join(this.imagesDir, file));
@@ -223,9 +223,9 @@ class Store extends EventEmitter {
     return this.scans.findIndex((s) => s.id === id) + 1;
   }
 
-  /** Scans whose capture sequence number is in `seqs`, in list order. */
-  bySeqs(seqs) {
-    return this.scans.filter((s) => seqs.has(s.seq));
+  /** Scans whose capture sequence number falls in one of the [from, to] ranges, in list order. */
+  bySeqs(ranges) {
+    return this.scans.filter((s) => ranges.some(([a, b]) => s.seq >= a && s.seq <= b));
   }
 
   async trash(scan) {

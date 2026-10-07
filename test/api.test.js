@@ -243,6 +243,30 @@ test('exports only the selected scans, in list order', async () => {
   for (const bad of ['abc', '5-1', '1,,2', '0']) assert.equal((await req('GET', `/api/export.zip?seqs=${bad}`)).status, 400, bad);
 });
 
+test('hostile export selections are rejected or answered quickly (no server hang)', async () => {
+  // numbers beyond 2^53 used to spin forever; huge ranges used to be expanded
+  for (const bad of ['9007199254740992', '9007199254740992-9007199254740993', '99999999999999999999', '1-' + '9'.repeat(400)]) {
+    assert.equal((await req('GET', `/api/export.xlsx?seqs=${bad}`)).status, 400, bad);
+  }
+  const huge = Array(1000).fill('1-999999999').join(','); // ~12 KB, under Node's header limit
+  const t0 = Date.now();
+  const r = await req('GET', `/api/export.zip?seqs=${huge}`);
+  assert.equal(r.status, 200);
+  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+  assert.equal((await req('GET', `/api/export.zip?seqs=${Array(5001).fill('1').join(',')}`)).status, 400);
+  assert.equal((await req('GET', '/api/ping')).status, 200);
+});
+
+test('a number clash names the other card by its list position', async () => {
+  const x = await upload(860, 'cap-clash');
+  const at = store.positionOf(idOf(C));
+  const r = await json('PATCH', `/api/scans/${x.data.scan.id}`, { number: C });
+  assert.equal(r.status, 409);
+  assert.match(r.data.error, new RegExp(`No\\. ${at}\\)`));
+  assert.equal(r.data.clashId, idOf(C));
+  await json('POST', '/api/scans/bulk-delete', { ids: [x.data.scan.id] });
+});
+
 test('deletes several scans at once', async () => {
   const x = await upload(860, 'cap-bulk-1');
   const y = await upload(880, 'cap-bulk-2');

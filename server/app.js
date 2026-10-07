@@ -26,20 +26,21 @@ function parseCookies(header) {
 
 /**
  * Parses an export selection like "1-5,8,12-14" (capture sequence numbers)
- * into a Set. Returns null when no selection was given.
+ * into [from, to] ranges. Ranges are never expanded, so the cost depends on
+ * the size of the list, not on the numbers in the request. Returns null when
+ * no selection was given.
  */
 function parseSeqs(raw) {
   if (raw === undefined) return null;
   const text = String(raw);
-  if (text.length > 20000 || !/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(text)) throw new StoreError(400, 'Invalid selection');
-  const out = new Set();
-  for (const part of text.split(',')) {
+  if (text.length > 20000 || !/^\d{1,9}(-\d{1,9})?(,\d{1,9}(-\d{1,9})?)*$/.test(text)) throw new StoreError(400, 'Invalid selection');
+  const parts = text.split(',');
+  if (parts.length > 5000) throw new StoreError(400, 'Invalid selection');
+  return parts.map((part) => {
     const [a, b = a] = part.split('-').map(Number);
-    if (a < 1 || b < a || b - a > 100000) throw new StoreError(400, 'Invalid selection');
-    for (let n = a; n <= b; n++) out.add(n);
-    if (out.size > 100000) throw new StoreError(400, 'Invalid selection');
-  }
-  return out;
+    if (a < 1 || b < a) throw new StoreError(400, 'Invalid selection');
+    return [a, b];
+  });
 }
 
 /** Validates a JSON body of the form { ids: ["…", …] }. */
@@ -113,7 +114,7 @@ function createApp({ store, ocr, token, caDer, info = () => ({}), trustLoopback 
     const scanners = [...clients].filter((c) => c.role === 'scanner').map((c) => c.device || 'Phone');
     return { scanners: scanners.length, devices: scanners };
   }
-  // `position` is the 1-based place in the list order (the "No." in exports)
+  // `position` is the 1-based place in the list order (the order used for exports)
   const publicScan = (s, position = store.positionOf(s.id)) => ({
     ...s,
     position,
@@ -322,9 +323,9 @@ function createApp({ store, ocr, token, caDer, info = () => ({}), trustLoopback 
 
   /** All scans, or only the ones picked with ?seqs=1-5,8 - always in list order. */
   function exportScope(req) {
-    const seqs = parseSeqs(req.query.seqs);
-    if (!seqs) return { scans: store.list(), tag: '' };
-    const scans = store.bySeqs(seqs);
+    const ranges = parseSeqs(req.query.seqs);
+    if (!ranges) return { scans: store.list(), tag: '' };
+    const scans = store.bySeqs(ranges);
     if (!scans.length) throw new StoreError(404, 'None of the selected scans exist any more');
     return { scans, tag: `${scans.length}-selected-` };
   }
