@@ -108,7 +108,10 @@ test('the Mac itself needs no token, but forged cross-site requests are refused'
     );
     assert.equal(rebound, 401);
     // a plain form-style POST (no custom header) is rejected
-    assert.equal((await fetch(`http://localhost:${port}/api/archive`, { method: 'POST' })).status, 403);
+    for (const url of ['/api/archive', '/api/scans/bulk-delete', '/api/scans/order']) {
+      const forged = await fetch(`http://localhost:${port}${url}`, { method: 'POST', body: 'ids=x', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+      assert.equal(forged.status, 403, url);
+    }
   } finally {
     local.closeAllConnections();
     local.close();
@@ -191,6 +194,95 @@ test('downloads all images as a ZIP named by card number', async () => {
   assert.deepEqual(names, [`${A}.jpg`, `${B}.jpg`, '0005999988887777.jpg'].sort());
 });
 
+const json = (method, url, body) => req(method, url, { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+const C = '0005999988887777';
+const idOf = (number) => store.list().find((s) => s.number === number).id;
+const listNumbers = async () => (await req('GET', '/api/scans')).data.scans.map((s) => [s.position, s.number]);
+
+test('rearranges the list and keeps the order', async () => {
+  assert.deepEqual(await listNumbers(), [
+    [1, A],
+    [2, B],
+    [3, C],
+  ]);
+  // partial list: the scans not mentioned keep their order at the end
+  let r = await json('POST', '/api/scans/order', { ids: [idOf(C), idOf(A)] });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.changed, true);
+  assert.deepEqual((await listNumbers()).map((x) => x[1]), [C, A, B]);
+  // unknown and repeated ids are ignored
+  r = await json('POST', '/api/scans/order', { ids: ['nope', idOf(B), idOf(B), idOf(C)] });
+  assert.deepEqual((await listNumbers()).map((x) => x[1]), [B, C, A]);
+  r = await json('POST', '/api/scans/order', { ids: [idOf(B), idOf(C), idOf(A)] });
+  assert.equal(r.data.changed, false);
+  // survives a restart
+  const reopened = await new Store(dir).init();
+  assert.deepEqual(reopened.list().map((s) => s.number), [B, C, A]);
+  // positions are reported with duplicates, e.g. on the phone
+  const dup = await upload(800, 'cap-dup-order');
+  assert.equal(dup.data.result, 'duplicate');
+  assert.equal(dup.data.scan.position, 3);
+  for (const bad of [{}, { ids: 'x' }, { ids: [1, 2] }]) assert.equal((await json('POST', '/api/scans/order', bad)).status, 400);
+});
+
+test('exports only the selected scans, in list order', async () => {
+  const seq = (n) => store.list().find((s) => s.number === n).seq;
+  const r = await req('GET', `/api/export.xlsx?seqs=${seq(A)},${seq(C)}`);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-disposition'), /toll-cards-2-selected-.*\.xlsx/);
+  const strings = unzip(r.data)['xl/sharedStrings.xml'].toString();
+  assert.ok(strings.includes(`<t>${A}</t>`) && strings.includes(`<t>${C}</t>`));
+  assert.ok(!strings.includes(`<t>${B}</t>`), 'unselected card exported');
+  assert.ok(strings.indexOf(C) < strings.indexOf(A), 'rows must follow the list order (C before A)');
+
+  const z = await req('GET', '/api/export.zip?seqs=1-2');
+  assert.equal(z.status, 200);
+  assert.deepEqual(Object.keys(unzip(z.data)).sort(), [`${A}.jpg`, `${B}.jpg`].sort());
+
+  assert.equal((await req('GET', '/api/export.xlsx?seqs=99')).status, 404);
+  for (const bad of ['abc', '5-1', '1,,2', '0']) assert.equal((await req('GET', `/api/export.zip?seqs=${bad}`)).status, 400, bad);
+});
+
+test('hostile export selections are rejected or answered quickly (no server hang)', async () => {
+  // numbers beyond 2^53 used to spin forever; huge ranges used to be expanded
+  for (const bad of ['9007199254740992', '9007199254740992-9007199254740993', '99999999999999999999', '1-' + '9'.repeat(400)]) {
+    assert.equal((await req('GET', `/api/export.xlsx?seqs=${bad}`)).status, 400, bad);
+  }
+  const huge = Array(1000).fill('1-999999999').join(','); // ~12 KB, under Node's header limit
+  const t0 = Date.now();
+  const r = await req('GET', `/api/export.zip?seqs=${huge}`);
+  assert.equal(r.status, 200);
+  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+  assert.equal((await req('GET', `/api/export.zip?seqs=${Array(5001).fill('1').join(',')}`)).status, 400);
+  assert.equal((await req('GET', '/api/ping')).status, 200);
+});
+
+test('a number clash names the other card by its list position', async () => {
+  const x = await upload(860, 'cap-clash');
+  const at = store.positionOf(idOf(C));
+  const r = await json('PATCH', `/api/scans/${x.data.scan.id}`, { number: C });
+  assert.equal(r.status, 409);
+  assert.match(r.data.error, new RegExp(`No\\. ${at}\\)`));
+  assert.equal(r.data.clashId, idOf(C));
+  await json('POST', '/api/scans/bulk-delete', { ids: [x.data.scan.id] });
+});
+
+test('deletes several scans at once', async () => {
+  const x = await upload(860, 'cap-bulk-1');
+  const y = await upload(880, 'cap-bulk-2');
+  assert.equal(store.list().length, 5);
+  const before = fs.readdirSync(path.join(dir, 'trash')).length;
+  const r = await json('POST', '/api/scans/bulk-delete', { ids: [x.data.scan.id, y.data.scan.id, 'nope'] });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.deleted, 2);
+  assert.deepEqual(r.data.missing, ['nope']);
+  assert.equal(r.data.stats.total, 3);
+  assert.equal(fs.readdirSync(path.join(dir, 'trash')).length, before + 2);
+  assert.deepEqual((await listNumbers()).map((p) => p[0]), [1, 2, 3]);
+  assert.equal((await json('POST', '/api/scans/bulk-delete', { ids: 'all' })).status, 400);
+  assert.equal((await req('DELETE', '/api/scans/nope')).status, 404);
+});
+
 test('deletes to the trash folder and archives a batch', async () => {
   const victim = store.list().find((s) => s.number === B);
   assert.equal((await req('DELETE', `/api/scans/${victim.id}`)).status, 200);
@@ -204,4 +296,23 @@ test('deletes to the trash folder and archives a batch', async () => {
   const after = await upload(800, 'cap-5');
   assert.equal(after.data.result, 'saved');
   assert.equal(after.data.scan.seq, 1);
+});
+
+test('a phone paired only by cookie (iOS home-screen app) can upload and gets its code back', async () => {
+  const cookie = `tcs_token=${TOKEN}`;
+  const pair = await fetch(`${base}/api/pair`, { headers: { Cookie: cookie } });
+  assert.equal(pair.status, 200);
+  assert.equal((await pair.json()).token, TOKEN);
+  assert.equal((await fetch(`${base}/api/pair`)).status, 401);
+  const body = await card(900);
+  // what the scanner sends: cookie + app header, no token
+  const ok = await fetch(`${base}/api/scans`, {
+    method: 'POST',
+    body,
+    headers: { Cookie: cookie, 'Content-Type': 'image/jpeg', 'X-Requested-With': 'toll-card-scanner', 'X-Capture-Id': 'cookie-only' },
+  });
+  assert.equal(ok.status, 200);
+  // a forged cross-site post carries the cookie but cannot add the header
+  const forged = await fetch(`${base}/api/scans`, { method: 'POST', body, headers: { Cookie: cookie, 'Content-Type': 'image/jpeg' } });
+  assert.equal(forged.status, 403);
 });

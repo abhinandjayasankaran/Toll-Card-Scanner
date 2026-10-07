@@ -24,6 +24,34 @@ function parseCookies(header) {
   return out;
 }
 
+/**
+ * Parses an export selection like "1-5,8,12-14" (capture sequence numbers)
+ * into [from, to] ranges. Ranges are never expanded, so the cost depends on
+ * the size of the list, not on the numbers in the request. Returns null when
+ * no selection was given.
+ */
+function parseSeqs(raw) {
+  if (raw === undefined) return null;
+  const text = String(raw);
+  if (text.length > 20000 || !/^\d{1,9}(-\d{1,9})?(,\d{1,9}(-\d{1,9})?)*$/.test(text)) throw new StoreError(400, 'Invalid selection');
+  const parts = text.split(',');
+  if (parts.length > 5000) throw new StoreError(400, 'Invalid selection');
+  return parts.map((part) => {
+    const [a, b = a] = part.split('-').map(Number);
+    if (a < 1 || b < a) throw new StoreError(400, 'Invalid selection');
+    return [a, b];
+  });
+}
+
+/** Validates a JSON body of the form { ids: ["…", …] }. */
+function idList(body) {
+  const ids = body && body.ids;
+  if (!Array.isArray(ids) || ids.length > 20000 || !ids.every((id) => typeof id === 'string' && id.length <= 80)) {
+    throw new StoreError(400, 'Expected { ids: [...] }');
+  }
+  return ids;
+}
+
 function sameToken(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
   return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -86,14 +114,17 @@ function createApp({ store, ocr, token, caDer, info = () => ({}), trustLoopback 
     const scanners = [...clients].filter((c) => c.role === 'scanner').map((c) => c.device || 'Phone');
     return { scanners: scanners.length, devices: scanners };
   }
-  const publicScan = (s) => ({
+  // `position` is the 1-based place in the list order (the order used for exports)
+  const publicScan = (s, position = store.positionOf(s.id)) => ({
     ...s,
+    position,
     imageUrl: `/images/${encodeURIComponent(s.file)}?v=${s.version}`,
     thumbUrl: `/thumbs/${encodeURIComponent(s.thumb)}?v=${s.version}`,
   });
   store.on('add', (s) => broadcast('add', { scan: publicScan(s), stats: store.stats() }));
   store.on('update', (s) => broadcast('update', { scan: publicScan(s), stats: store.stats() }));
-  store.on('remove', (s) => broadcast('remove', { id: s.id, stats: store.stats() }));
+  store.on('removed', (list) => broadcast('removed', { ids: list.map((s) => s.id), stats: store.stats() }));
+  store.on('order', (ids) => broadcast('order', { ids }));
   store.on('reset', () => broadcast('reset', { stats: store.stats() }));
   const heartbeat = setInterval(() => {
     for (const c of clients) c.res.write(': ping\n\n');
@@ -159,7 +190,13 @@ function createApp({ store, ocr, token, caDer, info = () => ({}), trustLoopback 
   app.use('/portal', express.static(path.join(PUBLIC_DIR, 'portal')));
 
   // ------------------------------------------------------- authorised API
-  app.get('/api/pair', requireAuth, (req, res) => res.json({ ok: true }));
+  // A phone that is paired only by its cookie (the iOS home-screen app gets
+  // Safari's cookies but not its storage) gets the code back so it can keep it.
+  // Same-origin only: no CORS headers, so other sites cannot read it.
+  app.get('/api/pair', requireAuth, (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, token });
+  });
 
   app.get('/api/info', requireAuth, async (req, res, next) => {
     try {
@@ -187,7 +224,7 @@ function createApp({ store, ocr, token, caDer, info = () => ({}), trustLoopback 
 
   app.get('/api/scans', requireAuth, (req, res) => {
     res.set('Cache-Control', 'no-store');
-    res.json({ scans: store.list().map(publicScan), stats: store.stats(), presence: presence() });
+    res.json({ scans: store.list().map((s, i) => publicScan(s, i + 1)), stats: store.stats(), presence: presence() });
   });
 
   app.post('/api/scans', requireAuth, express.raw({ type: () => true, limit: '20mb' }), async (req, res, next) => {
@@ -216,6 +253,23 @@ function createApp({ store, ocr, token, caDer, info = () => ({}), trustLoopback 
       const added = await store.add({ buffer, ocr: result, captureId, device });
       if (added.result === 'duplicate') broadcast('duplicate', { number: result.number, scan: publicScan(added.scan), device });
       res.json({ result: added.result, scan: publicScan(added.scan), stats: store.stats() });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/scans/bulk-delete', requireAuth, express.json({ limit: '2mb' }), async (req, res, next) => {
+    try {
+      const r = await store.removeMany(idList(req.body));
+      res.json({ deleted: r.removed.length, missing: r.missing, stats: store.stats() });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/scans/order', requireAuth, express.json({ limit: '2mb' }), async (req, res, next) => {
+    try {
+      res.json(await store.reorder(idList(req.body)));
     } catch (e) {
       next(e);
     }
@@ -273,21 +327,37 @@ function createApp({ store, ocr, token, caDer, info = () => ({}), trustLoopback 
     res.download(store.imagePath(scan), scan.file);
   });
 
+  /** All scans, or only the ones picked with ?seqs=1-5,8 - always in list order. */
+  function exportScope(req) {
+    const ranges = parseSeqs(req.query.seqs);
+    if (!ranges) return { scans: store.list(), tag: '' };
+    const scans = store.bySeqs(ranges);
+    if (!scans.length) throw new StoreError(404, 'None of the selected scans exist any more');
+    return { scans, tag: `${scans.length}-selected-` };
+  }
+
   app.get('/api/export.xlsx', requireAuth, async (req, res, next) => {
     try {
-      const buf = await buildWorkbook(store.list());
+      const { scans, tag } = exportScope(req);
+      const buf = await buildWorkbook(scans);
       res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.set('Content-Disposition', `attachment; filename="toll-cards-${stamp()}.xlsx"`);
+      res.set('Content-Disposition', `attachment; filename="toll-cards-${tag}${stamp()}.xlsx"`);
       res.send(buf);
     } catch (e) {
       next(e);
     }
   });
 
-  app.get('/api/export.zip', requireAuth, (req, res) => {
+  app.get('/api/export.zip', requireAuth, (req, res, next) => {
+    let scope;
+    try {
+      scope = exportScope(req);
+    } catch (e) {
+      return next(e);
+    }
     res.set('Content-Type', 'application/zip');
-    res.set('Content-Disposition', `attachment; filename="toll-card-images-${stamp()}.zip"`);
-    streamZip(store.list(), (s) => store.imagePath(s), res, (err) => {
+    res.set('Content-Disposition', `attachment; filename="toll-card-images-${scope.tag}${stamp()}.zip"`);
+    streamZip(scope.scans, (s) => store.imagePath(s), res, (err) => {
       console.error('ZIP failed:', err);
       res.destroy(err);
     });

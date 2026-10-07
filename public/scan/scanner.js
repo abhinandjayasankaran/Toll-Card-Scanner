@@ -32,9 +32,15 @@
   };
 
   const params = new URLSearchParams(location.search);
-  let token = params.get('k') || local.get('token', '');
-  if (params.get('k')) local.set('token', token);
-  if (token) $('manifest-link').href = 'manifest.webmanifest?k=' + encodeURIComponent(token);
+  let token = '';
+  function useToken(t) {
+    if (!t || t === token) return;
+    token = t;
+    local.set('token', t);
+    // the home-screen app needs the pairing code in its start URL
+    $('manifest-link').href = 'manifest.webmanifest?k=' + encodeURIComponent(t);
+  }
+  useToken(params.get('k') || local.get('token', ''));
 
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const settings = {
@@ -46,7 +52,10 @@
 
   function api(path, opts) {
     opts = opts || {};
-    const headers = Object.assign({}, opts.headers || {});
+    // Always send the app header: a phone paired only by cookie (e.g. the iOS
+    // home-screen app, which gets Safari's cookies but not its storage) has no
+    // token here, and the Mac refuses changes without one of the two headers.
+    const headers = Object.assign({ 'X-Requested-With': 'toll-card-scanner' }, opts.headers || {});
     if (token) headers['X-Access-Token'] = token;
     return fetch(path, Object.assign({}, opts, { headers, credentials: 'same-origin', cache: 'no-store' }));
   }
@@ -66,8 +75,11 @@
   async function checkPairing() {
     try {
       const res = await api('/api/pair');
-      if (res.ok) setPair('pill-ok', '✓ Connected to your Mac');
-      else if (res.status === 401) setPair('pill-bad', 'Not paired – scan the QR code on the Mac portal');
+      if (res.ok) {
+        setPair('pill-ok', '✓ Connected to your Mac');
+        const d = await res.json().catch(() => ({}));
+        useToken(d.token); // paired by cookie only: remember the code again
+      } else if (res.status === 401) setPair('pill-bad', 'Not paired – scan the QR code on the Mac portal');
       else setPair('pill-bad', 'Mac replied with an error (' + res.status + ')');
       return res.ok;
     } catch (e) {
@@ -104,7 +116,7 @@
         /* ignore */
       }
     };
-    ['hello', 'add', 'update', 'remove', 'reset'].forEach((t) => events.addEventListener(t, onStats));
+    ['hello', 'add', 'update', 'removed', 'reset'].forEach((t) => events.addEventListener(t, onStats));
   }
 
   // -------------------------------------------------------------- worker
@@ -497,21 +509,25 @@
           continue;
         }
         backoff = 1500;
-        if (res.status === 401) {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 403) {
+          // keep the capture: it uploads once the phone is paired again
           blockedByPairing = true;
-          showLast(item, { cls: 'bad', number: '', status: 'Not paired – scan the QR code on the Mac again' });
+          showLast(item, { cls: 'bad', number: '', status: 'Not paired – scan the QR code on the Mac again (' + items.length + ' kept)' });
           break;
         }
-        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const tries = (failures.get(item.id) || 0) + 1;
-          failures.set(item.id, tries);
-          if (res.status >= 500 && tries < 4) {
-            await sleep(2500);
+          // Only an image the Mac rejects as such is dropped; anything else
+          // (Mac busy, error, restarting) is retried so no card is lost.
+          if (res.status === 400 || res.status === 413 || res.status === 415) {
+            await queue.remove(item.id);
+            showResult(item, { result: 'error', error: data.error || 'Upload failed (' + res.status + ')' });
             continue;
           }
-          await queue.remove(item.id);
-          showResult(item, { result: 'error', error: data.error || 'Upload failed (' + res.status + ')' });
+          const tries = (failures.get(item.id) || 0) + 1;
+          failures.set(item.id, tries);
+          showLast(item, { cls: 'warn', number: '', status: 'Mac error (' + res.status + ') – retrying… (' + items.length + ' queued)' });
+          await sleep(Math.min(2500 * tries, 30000));
           continue;
         }
         await queue.remove(item.id);
@@ -571,7 +587,7 @@
       toast('warn', scan.number ? 'Saved – check number' : 'Number not readable', scan.number ? formatNumber(scan.number) : 'Fix it on the Mac');
       beep(660, 0.12, 0.15);
     } else if (data.result === 'duplicate') {
-      showLast(item, { cls: 'warn', number: scan.number, status: 'Already scanned (#' + scan.seq + ') – skipped' });
+      showLast(item, { cls: 'warn', number: scan.number, status: 'Already in the list (No. ' + (scan.position || scan.seq) + ') – skipped' });
       toast('warn', 'Already scanned – skipped', formatNumber(scan.number));
       beep(520, 0.12, 0.1);
       beep(520, 0.28, 0.1);
@@ -678,9 +694,21 @@
     requestAnimationFrame(loop);
   });
 
+  function pairAndResume() {
+    return checkPairing().then((ok) => {
+      if (ok) {
+        blockedByPairing = false;
+        if (!events) connectEvents();
+        pumpQueue();
+      }
+      return ok;
+    });
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
-    pumpQueue();
+    if (blockedByPairing) pairAndResume();
+    else pumpQueue();
     if (!running) return;
     keepAwake();
     const track = stream && stream.getVideoTracks()[0];
@@ -695,12 +723,6 @@
       /* untrusted certificate: works, just without offline caching */
     });
   }
-  checkPairing().then((ok) => {
-    if (ok) {
-      blockedByPairing = false;
-      connectEvents();
-      pumpQueue();
-    }
-  });
+  pairAndResume();
   queue.all().then((items) => setQueueCount(items.length));
 })();

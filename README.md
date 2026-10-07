@@ -64,9 +64,23 @@ From then on the phone connects automatically whenever the scanner is running on
 - **To check** filter: scans whose number could not be read or that should be double‑checked. Click a card (or its number), type the 16 digits, press **Enter**. The file is renamed to the new number and the next card to check opens automatically.
 - In the preview you can also **Re‑read number**, **Rotate 180°**, **Download** or **Delete** a scan. Use ← → to browse.
 - **Download images** → a ZIP with all `<card number>.jpg` files.
-- **Export Excel** → `toll-cards-<date>.xlsx` with columns *No.*, *Card Number*, *Image File*, *Scanned At*. Card numbers are stored as text, so the leading zeros and all 16 digits stay intact.
+- **Export Excel** → `toll-cards-<date>.xlsx` with columns *No.*, *Card Number*, *Image File*, *Scanned At*, in list order. Card numbers are stored as text, so the leading zeros and all 16 digits stay intact.
 - The images are also saved directly in the project folder under `data/images/`.
 - **⋯ → Archive batch & start new** moves the current batch to `data/archive/<date-time>/` and empties the list (download/export first).
+
+### Select, delete, re‑arrange or export only some cards
+
+![Selecting cards in the portal](docs/portal-select.png)
+
+- **Select cards:** hover a card and tick the round checkbox in its corner. **Shift‑click** a second card to select everything in between, **⌘A** selects every card shown (respecting search and the *To check* filter), **Esc** clears the selection. While cards are selected, clicking a card adds or removes it.
+- The **selection bar** at the bottom then offers:
+  - **Export Excel** / **Download images** for just the selected cards,
+  - **Move ▾** to the start or end of the list, or to a position number,
+  - **Delete** (or press **⌫**). Deleted images go to `data/trash/` on the Mac.
+- **List order** is the order of the *No.* column in Excel and in the portal. Choose **List order (as exported)** in the view menu, then **drag cards** to where they belong. Dragging a selected card moves all selected cards together.
+- **Sort list ▾** re‑orders the whole list by card number (ascending or descending), by scan time, or reverses it.
+- Every re‑order is saved on the Mac straight away. The toast that appears has an **Undo** button for the latest change.
+- New scans are always added at the end of the list. *Newest scans first* only changes the view, not the list order.
 
 ## Troubleshooting
 
@@ -74,6 +88,7 @@ From then on the phone connects automatically whenever the scanner is running on
 | --- | --- |
 | iPhone page can't connect | Same Wi‑Fi? Did you click *Allow* for incoming connections? (System Settings → Network → Firewall → Options → allow `node`.) Guest/office Wi‑Fi often blocks devices from talking to each other: turn on the iPhone's **Personal Hotspot** and connect the Mac to it. |
 | “This Connection Is Not Private” | Finish the certificate steps in section 2 (both *Install* and *Certificate Trust Settings*). |
+| Phone says “Not paired” | Scan the QR code in the portal again (or open the scanner from it once). Cards captured meanwhile stay on the phone and upload by themselves once it is paired. |
 | Camera doesn't start | Settings → Apps → Safari → Camera → *Allow*, or in Safari tap **aA → Website Settings → Camera**. |
 | Mac changed network / IP address | Restart the scanner and scan the QR code again. The certificate is reissued automatically and stays trusted. |
 | Card outline flickers / not found | Use a dark background, avoid strong reflections, and move a little closer. You can always capture manually with the round button; the scan is still cropped if the edges are found. |
