@@ -230,6 +230,7 @@ h1 {
 
 .menu {
   position: absolute;
+  z-index: 40;
   right: 0;
   top: calc(100% + 6px);
   background: var(--surface);
@@ -433,6 +434,7 @@ select {
 }
 
 .tile {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -520,6 +522,212 @@ select {
 .badge.ok {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+/* -------------------------------------------------------------- selection */
+.select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.select-all input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.pick {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(15, 20, 28, 0.38);
+  color: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.tile:hover .pick,
+.pick:focus-visible,
+body.selecting .pick {
+  opacity: 1;
+}
+
+.pick:hover {
+  background: rgba(15, 20, 28, 0.6);
+}
+
+.tile.selected .pick {
+  opacity: 1;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.tile.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.tile.selected .thumb img {
+  opacity: 0.86;
+}
+
+body.selecting .thumb {
+  cursor: pointer;
+}
+
+.pos {
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.drag-hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.grid.can-drag .tile {
+  cursor: grab;
+}
+
+.tile.dragging {
+  opacity: 0.35;
+}
+
+.tile.drop-before::before,
+.tile.drop-after::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.tile.drop-before::before {
+  left: -11px;
+}
+
+.tile.drop-after::after {
+  right: -11px;
+}
+
+.drag-ghost {
+  position: fixed;
+  top: -100px;
+  left: -100px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.selbar {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 8px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.1);
+  max-width: calc(100vw - 24px);
+  flex-wrap: wrap;
+  animation: toast-in 0.15s ease-out;
+}
+
+.sel-x {
+  border: 0;
+  background: var(--surface-2);
+  color: var(--text);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sel-count {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.sel-count b {
+  font-variant-numeric: tabular-nums;
+}
+
+#sel-hidden {
+  color: var(--muted);
+}
+
+.sel-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 2px 4px;
+}
+
+.menu.up {
+  top: auto;
+  bottom: calc(100% + 8px);
+  right: auto;
+  left: 0;
+}
+
+body.selecting main {
+  padding-bottom: 110px;
+}
+
+body.selecting .toasts {
+  bottom: 90px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.toast-action {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 4px;
 }
 
 /* ---------------------------------------------------------------- viewer */

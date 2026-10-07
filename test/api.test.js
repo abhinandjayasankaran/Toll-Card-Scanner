@@ -108,7 +108,10 @@ test('the Mac itself needs no token, but forged cross-site requests are refused'
     );
     assert.equal(rebound, 401);
     // a plain form-style POST (no custom header) is rejected
-    assert.equal((await fetch(`http://localhost:${port}/api/archive`, { method: 'POST' })).status, 403);
+    for (const url of ['/api/archive', '/api/scans/bulk-delete', '/api/scans/order']) {
+      const forged = await fetch(`http://localhost:${port}${url}`, { method: 'POST', body: 'ids=x', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+      assert.equal(forged.status, 403, url);
+    }
   } finally {
     local.closeAllConnections();
     local.close();
@@ -189,6 +192,71 @@ test('downloads all images as a ZIP named by card number', async () => {
   assert.equal(r.status, 200);
   const names = Object.keys(unzip(r.data)).sort();
   assert.deepEqual(names, [`${A}.jpg`, `${B}.jpg`, '0005999988887777.jpg'].sort());
+});
+
+const json = (method, url, body) => req(method, url, { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+const C = '0005999988887777';
+const idOf = (number) => store.list().find((s) => s.number === number).id;
+const listNumbers = async () => (await req('GET', '/api/scans')).data.scans.map((s) => [s.position, s.number]);
+
+test('rearranges the list and keeps the order', async () => {
+  assert.deepEqual(await listNumbers(), [
+    [1, A],
+    [2, B],
+    [3, C],
+  ]);
+  // partial list: the scans not mentioned keep their order at the end
+  let r = await json('POST', '/api/scans/order', { ids: [idOf(C), idOf(A)] });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.changed, true);
+  assert.deepEqual((await listNumbers()).map((x) => x[1]), [C, A, B]);
+  // unknown and repeated ids are ignored
+  r = await json('POST', '/api/scans/order', { ids: ['nope', idOf(B), idOf(B), idOf(C)] });
+  assert.deepEqual((await listNumbers()).map((x) => x[1]), [B, C, A]);
+  r = await json('POST', '/api/scans/order', { ids: [idOf(B), idOf(C), idOf(A)] });
+  assert.equal(r.data.changed, false);
+  // survives a restart
+  const reopened = await new Store(dir).init();
+  assert.deepEqual(reopened.list().map((s) => s.number), [B, C, A]);
+  // positions are reported with duplicates, e.g. on the phone
+  const dup = await upload(800, 'cap-dup-order');
+  assert.equal(dup.data.result, 'duplicate');
+  assert.equal(dup.data.scan.position, 3);
+  for (const bad of [{}, { ids: 'x' }, { ids: [1, 2] }]) assert.equal((await json('POST', '/api/scans/order', bad)).status, 400);
+});
+
+test('exports only the selected scans, in list order', async () => {
+  const seq = (n) => store.list().find((s) => s.number === n).seq;
+  const r = await req('GET', `/api/export.xlsx?seqs=${seq(A)},${seq(C)}`);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-disposition'), /toll-cards-2-selected-.*\.xlsx/);
+  const strings = unzip(r.data)['xl/sharedStrings.xml'].toString();
+  assert.ok(strings.includes(`<t>${A}</t>`) && strings.includes(`<t>${C}</t>`));
+  assert.ok(!strings.includes(`<t>${B}</t>`), 'unselected card exported');
+  assert.ok(strings.indexOf(C) < strings.indexOf(A), 'rows must follow the list order (C before A)');
+
+  const z = await req('GET', '/api/export.zip?seqs=1-2');
+  assert.equal(z.status, 200);
+  assert.deepEqual(Object.keys(unzip(z.data)).sort(), [`${A}.jpg`, `${B}.jpg`].sort());
+
+  assert.equal((await req('GET', '/api/export.xlsx?seqs=99')).status, 404);
+  for (const bad of ['abc', '5-1', '1,,2', '0']) assert.equal((await req('GET', `/api/export.zip?seqs=${bad}`)).status, 400, bad);
+});
+
+test('deletes several scans at once', async () => {
+  const x = await upload(860, 'cap-bulk-1');
+  const y = await upload(880, 'cap-bulk-2');
+  assert.equal(store.list().length, 5);
+  const before = fs.readdirSync(path.join(dir, 'trash')).length;
+  const r = await json('POST', '/api/scans/bulk-delete', { ids: [x.data.scan.id, y.data.scan.id, 'nope'] });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.deleted, 2);
+  assert.deepEqual(r.data.missing, ['nope']);
+  assert.equal(r.data.stats.total, 3);
+  assert.equal(fs.readdirSync(path.join(dir, 'trash')).length, before + 2);
+  assert.deepEqual((await listNumbers()).map((p) => p[0]), [1, 2, 3]);
+  assert.equal((await json('POST', '/api/scans/bulk-delete', { ids: 'all' })).status, 400);
+  assert.equal((await req('DELETE', '/api/scans/nope')).status, 404);
 });
 
 test('deletes to the trash folder and archives a batch', async () => {

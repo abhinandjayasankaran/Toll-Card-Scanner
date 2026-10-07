@@ -64,6 +64,10 @@
       </section>
 
       <section class="toolbar">
+        <label class="select-all" title="Select every card shown (⌘A)">
+          <input id="select-all" type="checkbox" />
+          <span>Select all</span>
+        </label>
         <div class="search">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" /></svg>
           <input id="search" type="search" placeholder="Search card number" autocomplete="off" />
@@ -72,10 +76,20 @@
           <button class="on" data-filter="all" type="button">All</button>
           <button data-filter="review" type="button">To check <span id="seg-review"></span></button>
         </div>
-        <select id="sort" aria-label="Sort">
-          <option value="new">Newest first</option>
-          <option value="old">Scan order</option>
+        <select id="sort" aria-label="Show cards">
+          <option value="new">Newest scans first</option>
+          <option value="order">List order (as exported)</option>
         </select>
+        <div class="menu-wrap">
+          <button id="btn-arrange" class="btn" type="button" title="Rearrange the whole list">Sort list ▾</button>
+          <div id="arrange-menu" class="menu" hidden>
+            <button data-arrange="number-asc" type="button">By card number (0 → 9)</button>
+            <button data-arrange="number-desc" type="button">By card number (9 → 0)</button>
+            <button data-arrange="time" type="button">By scan time (oldest first)</button>
+            <button data-arrange="reverse" type="button">Reverse the list</button>
+          </div>
+        </div>
+        <span id="drag-hint" class="drag-hint" hidden>Drag cards to rearrange · select several to move them together</span>
       </section>
 
       <section id="empty" class="empty" hidden>
@@ -116,6 +130,23 @@
         <p class="muted small">Keys: <kbd>←</kbd> <kbd>→</kbd> browse · <kbd>Esc</kbd> close</p>
       </aside>
     </dialog>
+
+    <div id="selbar" class="selbar" role="toolbar" aria-label="Selected cards" hidden>
+      <button id="sel-clear" class="sel-x" type="button" aria-label="Clear selection" title="Clear selection (Esc)">×</button>
+      <span class="sel-count"><b id="sel-count">0</b> selected<span id="sel-hidden"></span></span>
+      <span class="sel-sep" aria-hidden="true"></span>
+      <button id="sel-xlsx" class="btn small primary" type="button">Export Excel</button>
+      <button id="sel-zip" class="btn small" type="button">Download images</button>
+      <div class="menu-wrap">
+        <button id="sel-move" class="btn small" type="button">Move ▾</button>
+        <div id="move-menu" class="menu up" hidden>
+          <button data-move="start" type="button">To the start of the list</button>
+          <button data-move="end" type="button">To the end of the list</button>
+          <button data-move="position" type="button">To position…</button>
+        </div>
+      </div>
+      <button id="sel-delete" class="btn small danger" type="button" title="Delete selected (⌫)">Delete</button>
+    </div>
 
     <div id="toasts" class="toasts"></div>
     <script src="/portal/portal.js"></script>

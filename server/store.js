@@ -218,17 +218,69 @@ class Store extends EventEmitter {
     });
   }
 
+  /** 1-based position of a scan in the list order (the order used for exports). */
+  positionOf(id) {
+    return this.scans.findIndex((s) => s.id === id) + 1;
+  }
+
+  /** Scans whose capture sequence number is in `seqs`, in list order. */
+  bySeqs(seqs) {
+    return this.scans.filter((s) => seqs.has(s.seq));
+  }
+
+  async trash(scan) {
+    const dest = path.join(this.trashDir, `${stamp()}-${scan.seq}-${scan.file}`);
+    await fsp.rename(this.imagePath(scan), dest).catch(() => {});
+    await fsp.rm(this.thumbPath(scan), { force: true });
+  }
+
   remove(id) {
+    return this.removeMany([id]).then((r) => {
+      if (!r.removed.length) throw new StoreError(404, 'Scan not found');
+      return r.removed[0];
+    });
+  }
+
+  /** Deletes several scans at once; their images go to data/trash/. */
+  removeMany(ids) {
     return this.exclusive(async () => {
-      const idx = this.scans.findIndex((s) => s.id === id);
-      if (idx < 0) throw new StoreError(404, 'Scan not found');
-      const [scan] = this.scans.splice(idx, 1);
-      const dest = path.join(this.trashDir, `${stamp()}-${scan.file}`);
-      await fsp.rename(this.imagePath(scan), dest).catch(() => {});
-      await fsp.rm(this.thumbPath(scan), { force: true });
+      const wanted = new Set(ids);
+      const removed = this.scans.filter((s) => wanted.has(s.id));
+      if (!removed.length) return { removed, missing: [...wanted] };
+      this.scans = this.scans.filter((s) => !wanted.has(s.id));
+      for (const scan of removed) await this.trash(scan);
       await this.persist();
-      this.emit('remove', scan);
-      return scan;
+      this.emit('removed', removed);
+      const gone = new Set(removed.map((s) => s.id));
+      return { removed, missing: [...wanted].filter((id) => !gone.has(id)) };
+    });
+  }
+
+  /**
+   * Rearranges the list. `ids` is the wanted order; ids that no longer exist
+   * are ignored and scans not mentioned (e.g. added by the phone meanwhile)
+   * keep their relative order at the end.
+   */
+  reorder(ids) {
+    return this.exclusive(async () => {
+      const byId = new Map(this.scans.map((s) => [s.id, s]));
+      const next = [];
+      const seen = new Set();
+      for (const id of ids) {
+        const scan = byId.get(id);
+        if (scan && !seen.has(id)) {
+          next.push(scan);
+          seen.add(id);
+        }
+      }
+      for (const scan of this.scans) if (!seen.has(scan.id)) next.push(scan);
+      const changed = next.some((scan, i) => scan !== this.scans[i]);
+      if (changed) {
+        this.scans = next;
+        await this.persist();
+        this.emit('order', next.map((s) => s.id));
+      }
+      return { order: next.map((s) => s.id), changed };
     });
   }
 

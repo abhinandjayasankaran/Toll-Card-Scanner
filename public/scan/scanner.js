@@ -104,7 +104,7 @@
         /* ignore */
       }
     };
-    ['hello', 'add', 'update', 'remove', 'reset'].forEach((t) => events.addEventListener(t, onStats));
+    ['hello', 'add', 'update', 'removed', 'reset'].forEach((t) => events.addEventListener(t, onStats));
   }
 
   // -------------------------------------------------------------- worker
@@ -571,7 +571,7 @@
       toast('warn', scan.number ? 'Saved – check number' : 'Number not readable', scan.number ? formatNumber(scan.number) : 'Fix it on the Mac');
       beep(660, 0.12, 0.15);
     } else if (data.result === 'duplicate') {
-      showLast(item, { cls: 'warn', number: scan.number, status: 'Already scanned (#' + scan.seq + ') – skipped' });
+      showLast(item, { cls: 'warn', number: scan.number, status: 'Already in the list (No. ' + (scan.position || scan.seq) + ') – skipped' });
       toast('warn', 'Already scanned – skipped', formatNumber(scan.number));
       beep(520, 0.12, 0.1);
       beep(520, 0.28, 0.1);
