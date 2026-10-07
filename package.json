@@ -1,0 +1,27 @@
+{
+  "name": "toll-card-scanner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scan eToll cards with an iPhone PWA, auto-crop + deskew them, OCR the card number and review/download everything live in a desktop portal.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20.9"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@peculiar/x509": "^2.1.0",
+    "@techstark/opencv-js": "5.0.0-release.1",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "archiver": "^8.0.0",
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "reflect-metadata": "^0.2.2",
+    "sharp": "^0.35.5",
+    "tesseract.js": "^7.0.0",
+    "write-excel-file": "^4.1.1"
+  }
+}

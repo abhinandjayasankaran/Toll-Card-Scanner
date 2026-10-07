@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Toll Card Scanner</title>
+    <link rel="icon" href="/portal/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/portal/portal.css" />
+  </head>
+  <body>
+    <header class="appbar">
+      <div class="brand">
+        <img src="/portal/favicon.svg" alt="" width="34" height="34" />
+        <div>
+          <h1>Toll Card Scanner</h1>
+          <div class="stats"><b id="stat-total">0</b> cards<span id="stat-review-wrap" hidden> · <b id="stat-review">0</b> to check</span></div>
+        </div>
+      </div>
+      <div class="chips">
+        <span id="phone-chip" class="chip chip-off" title="Phones currently scanning"><i></i><span>No phone connected</span></span>
+        <span id="live-chip" class="chip chip-off"><i></i><span>Connecting…</span></span>
+      </div>
+      <div class="actions">
+        <button id="btn-connect" class="btn ghost" type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 3h8v8H3V3Zm2 2v4h4V5H5Zm8-2h8v8h-8V3Zm2 2v4h4V5h-4ZM3 13h8v8H3v-8Zm2 2v4h4v-4H5Zm11-2h2v3h3v2h-3v3h-2v-3h-3v-2h3v-3Z" /></svg>
+          Connect phone
+        </button>
+        <button id="btn-zip" class="btn" type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3v10.6l3.3-3.3 1.4 1.4L12 16.4l-4.7-4.7 1.4-1.4 3.3 3.3V3h2ZM4 18h16v2H4v-2Z" /></svg>
+          Download images
+        </button>
+        <button id="btn-xlsx" class="btn primary" type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M5 3h10l4 4v14H5V3Zm9 1.5V8h3.5L14 4.5ZM8.2 11l1.9 3-1.9 3h1.7l1.1-1.9 1.1 1.9h1.7l-1.9-3 1.9-3h-1.7L11 12.9 9.9 11H8.2Z" /></svg>
+          Export Excel
+        </button>
+        <div class="menu-wrap">
+          <button id="btn-more" class="btn icon" type="button" aria-label="More">⋯</button>
+          <div id="menu" class="menu" hidden>
+            <button id="btn-archive" type="button">Archive batch &amp; start new…</button>
+            <a id="link-folder" href="#" hidden></a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section id="connect" class="connect" hidden>
+        <div class="qr" id="qr"></div>
+        <div class="connect-body">
+          <h2>Scan cards with your iPhone</h2>
+          <ol>
+            <li>Connect the iPhone to the <b>same Wi-Fi</b> as this Mac.</li>
+            <li>Point the iPhone <b>Camera app</b> at this QR code and tap the link.</li>
+            <li>First time only: follow the short certificate setup on the phone (about a minute).</li>
+            <li>Tap <b>Start scanning</b>. Tip: <b>Share → Add to Home Screen</b> installs it as an app.</li>
+          </ol>
+          <div class="url-row">
+            <code id="phone-url"></code>
+            <button id="btn-copy" class="btn small" type="button">Copy link</button>
+          </div>
+          <p class="muted small" id="connect-note"></p>
+        </div>
+        <button id="connect-close" class="close" type="button" aria-label="Hide">×</button>
+      </section>
+
+      <section class="toolbar">
+        <div class="search">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" /></svg>
+          <input id="search" type="search" placeholder="Search card number" autocomplete="off" />
+        </div>
+        <div class="seg" role="tablist">
+          <button class="on" data-filter="all" type="button">All</button>
+          <button data-filter="review" type="button">To check <span id="seg-review"></span></button>
+        </div>
+        <select id="sort" aria-label="Sort">
+          <option value="new">Newest first</option>
+          <option value="old">Scan order</option>
+        </select>
+      </section>
+
+      <section id="empty" class="empty" hidden>
+        <h2>No cards yet</h2>
+        <p>Scanned cards appear here instantly, already cropped, straightened and named after their card number.</p>
+      </section>
+
+      <section id="grid" class="grid" aria-live="polite"></section>
+    </main>
+
+    <dialog id="viewer" class="viewer">
+      <div class="viewer-main">
+        <img id="v-img" alt="Card image" />
+        <button id="v-prev" class="nav prev" type="button" aria-label="Previous">‹</button>
+        <button id="v-next" class="nav next" type="button" aria-label="Next">›</button>
+      </div>
+      <aside class="viewer-side">
+        <button id="v-close" class="close" type="button" aria-label="Close">×</button>
+        <div class="v-head" id="v-head"></div>
+        <form id="v-form">
+          <label for="v-number">Card number</label>
+          <input id="v-number" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="19" placeholder="0000 0000 0000 0000" />
+          <div id="v-error" class="v-error" hidden></div>
+          <button class="btn primary wide" type="submit">Save number <kbd>Enter</kbd></button>
+        </form>
+        <dl class="v-meta">
+          <dt>File</dt>
+          <dd id="v-file"></dd>
+          <dt>OCR</dt>
+          <dd id="v-ocr"></dd>
+        </dl>
+        <div class="v-actions">
+          <button id="v-reocr" class="btn" type="button">Re-read number</button>
+          <button id="v-rotate" class="btn" type="button">Rotate 180°</button>
+          <a id="v-download" class="btn" href="#">Download</a>
+          <button id="v-delete" class="btn danger" type="button">Delete</button>
+        </div>
+        <p class="muted small">Keys: <kbd>←</kbd> <kbd>→</kbd> browse · <kbd>Esc</kbd> close</p>
+      </aside>
+    </dialog>
+
+    <div id="toasts" class="toasts"></div>
+    <script src="/portal/portal.js"></script>
+  </body>
+</html>

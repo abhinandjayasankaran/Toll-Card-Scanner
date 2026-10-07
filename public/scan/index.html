@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <title>Card Scanner</title>
+    <meta name="theme-color" content="#0b0f14" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Card Scan" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link id="manifest-link" rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="scanner.css" />
+  </head>
+  <body>
+    <!-- Start screen -->
+    <section id="start" class="screen">
+      <div class="start-inner">
+        <img class="logo" src="icons/icon-192.png" alt="" width="72" height="72" />
+        <h1>Toll Card Scanner</h1>
+        <p class="lead">Point the camera at a card. It is found, cropped, straightened and sent to your Mac by itself, then you place the next card.</p>
+        <div id="pair-status" class="pill pill-wait">Connecting to your Mac…</div>
+        <button id="start-btn" class="btn-primary" type="button" disabled>Loading scanner…</button>
+        <ul class="tips">
+          <li><b>Dark, plain surface</b> under the card gives the fastest, most reliable edge detection.</li>
+          <li>Fill most of the frame with the card and avoid glare on the number.</li>
+          <li>Swap cards when you see <b>“Next card”</b>. Duplicates are skipped automatically.</li>
+        </ul>
+        <p id="install-tip" class="install-tip" hidden>Tip: tap <b>Share</b> → <b>Add to Home Screen</b> to install this as an app.</p>
+        <p id="start-error" class="error" hidden></p>
+      </div>
+    </section>
+
+    <!-- Camera -->
+    <section id="camera" class="screen" hidden>
+      <video id="video" playsinline muted autoplay></video>
+      <canvas id="overlay"></canvas>
+      <div id="guide" class="guide"><span></span><span></span><span></span><span></span></div>
+      <div id="flash" class="flash"></div>
+
+      <header class="topbar">
+        <div id="conn" class="conn conn-off"><i></i><span>Offline</span></div>
+        <div class="count"><b id="total">0</b> <span id="total-unit">cards</span></div>
+        <button id="settings-btn" class="icon-btn" type="button" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm9.2 4.9-1.9 1.1.1 2.2-2 1.2-1.9-1.1-1.9 1.1-.6 2.1h-2.3l-.6-2.1-1.9-1.1-1.9 1.1-2-1.2.1-2.2L2.8 13.4V11l1.9-1.1-.1-2.2 2-1.2 1.9 1.1 1.9-1.1.6-2.1h2.3l.6 2.1 1.9 1.1 1.9-1.1 2 1.2-.1 2.2 1.9 1.1v2.4Z" /></svg>
+        </button>
+      </header>
+
+      <div id="hint" class="hint">Point at a card</div>
+
+      <footer class="bottombar">
+        <div id="last" class="last empty">
+          <div class="last-thumb"><img id="last-img" alt="" /></div>
+          <div class="last-body">
+            <div id="last-number" class="last-number">No scans yet</div>
+            <div id="last-status" class="last-status">Cards you scan appear here</div>
+          </div>
+          <button id="undo-btn" class="undo" type="button" aria-label="Undo this scan" title="Undo this scan" hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12.5 8c-2.65 0-5.05 1-6.9 2.6L2 7v9h9l-3.62-3.62A7.95 7.95 0 0 1 12.5 10.5c3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8Z" /></svg>
+          </button>
+        </div>
+        <div class="controls">
+          <button id="auto-btn" class="toggle on" type="button" aria-pressed="true"><span>AUTO</span></button>
+          <button id="shutter" class="shutter" type="button" aria-label="Capture now"><span></span></button>
+          <div id="queue" class="queue" title="Waiting to upload"><b id="queue-count">0</b><small>queued</small></div>
+        </div>
+      </footer>
+
+      <div id="toast" class="toast" hidden></div>
+    </section>
+
+    <!-- Settings sheet -->
+    <div id="sheet" class="sheet" hidden>
+      <div class="sheet-card">
+        <h2>Settings</h2>
+        <label class="row"><span>Auto-capture when the card is steady</span><input id="opt-auto" type="checkbox" checked /></label>
+        <label class="row"><span>Sound on capture</span><input id="opt-sound" type="checkbox" checked /></label>
+        <label class="row"><span>High resolution camera (sharper numbers)</span><input id="opt-hires" type="checkbox" checked /></label>
+        <label class="row col"><span>This phone’s name (shown on the Mac)</span><input id="opt-device" type="text" maxlength="30" placeholder="iPhone" /></label>
+        <p class="small" id="sheet-info"></p>
+        <button id="sheet-close" class="btn-primary" type="button">Done</button>
+      </div>
+    </div>
+
+    <script src="lib/card-detector.js"></script>
+    <script src="scanner.js"></script>
+  </body>
+</html>

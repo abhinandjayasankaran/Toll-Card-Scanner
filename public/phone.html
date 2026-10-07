@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Connect phone · Toll Card Scanner</title>
+    <link rel="icon" href="/scan/icons/icon-192.png" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0f14;
+        --card: #141a22;
+        --text: #f3f5f7;
+        --muted: #9aa5b1;
+        --ok: #22c55e;
+        --line: rgba(255, 255, 255, 0.12);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        padding: calc(22px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom));
+      }
+      main {
+        max-width: 460px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 8px 0 6px;
+      }
+      p {
+        color: var(--muted);
+        margin: 0 0 14px;
+      }
+      ol {
+        list-style: none;
+        padding: 0;
+        margin: 18px 0;
+        counter-reset: step;
+      }
+      li {
+        counter-increment: step;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px 14px 14px 52px;
+        margin-bottom: 10px;
+        position: relative;
+      }
+      li::before {
+        content: counter(step);
+        position: absolute;
+        left: 14px;
+        top: 13px;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: var(--ok);
+        color: #04130a;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+      }
+      li b {
+        color: var(--text);
+      }
+      li span {
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .btn {
+        display: block;
+        text-align: center;
+        text-decoration: none;
+        padding: 14px;
+        border-radius: 12px;
+        font-weight: 700;
+        margin-top: 10px;
+        border: 0;
+        width: 100%;
+        font-size: 16px;
+      }
+      .primary {
+        background: var(--ok);
+        color: #04130a;
+      }
+      .secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+      .small {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      #checking {
+        text-align: center;
+        margin-top: 30vh;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div id="checking">Connecting to the scanner on your Mac…</div>
+
+      <section id="setup" hidden>
+        <h1>One-time phone setup</h1>
+        <p>Your iPhone only allows the camera on a secure connection. Trust your Mac’s scanner certificate once (about a minute) and it will connect automatically from then on.</p>
+        <ol>
+          <li>
+            <b>Download the certificate</b><br />
+            <span>Tap the button, then <b>Allow</b> and <b>Close</b>.</span>
+            <a class="btn primary" href="/ca.crt">Download certificate</a>
+          </li>
+          <li>
+            <b>Install it</b><br />
+            <span>Open <b>Settings</b> → tap <b>Profile Downloaded</b> near the top (or General → VPN &amp; Device Management) → <b>Install</b>.</span>
+          </li>
+          <li>
+            <b>Turn on full trust</b><br />
+            <span><b>Settings</b> → General → About → <b>Certificate Trust Settings</b> → switch on <b>Toll Card Scanner Local CA</b>.</span>
+          </li>
+          <li>
+            <b>Come back here</b><br />
+            <span>This page continues by itself, or tap the button.</span>
+            <button id="retry" class="btn primary" type="button">Check again</button>
+          </li>
+        </ol>
+        <a id="skip" class="btn secondary" href="#">Open without installing (shows a warning)</a>
+        <p class="small" style="margin-top: 14px">
+          Skipping works in Safari after tapping <b>Show Details → visit this website</b>, but installing the scanner on the Home Screen needs the certificate.
+          Phone and Mac must be on the same Wi-Fi.
+        </p>
+      </section>
+    </main>
+    <script>
+      (function () {
+        var p = new URLSearchParams(location.search);
+        var k = p.get('k') || '';
+        var port = p.get('s') || '8443';
+        var base = 'https://' + location.hostname + ':' + port;
+        var target = base + '/scan/' + (k ? '?k=' + encodeURIComponent(k) : '');
+        document.getElementById('skip').href = target;
+
+        function check() {
+          return fetch(base + '/api/ping', { cache: 'no-store' })
+            .then(function (r) {
+              if (r.ok) location.replace(target);
+              else throw new Error('HTTP ' + r.status);
+            })
+            .catch(function () {
+              document.getElementById('checking').hidden = true;
+              document.getElementById('setup').hidden = false;
+            });
+        }
+        document.getElementById('retry').addEventListener('click', check);
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') check();
+        });
+        check();
+      })();
+    </script>
+  </body>
+</html>
